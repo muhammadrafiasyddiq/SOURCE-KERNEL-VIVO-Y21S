@@ -1643,7 +1643,7 @@ otg_disable_alarm_func(struct alarm *alarm, ktime_t now)
 {
 	host_mode_enabled = false;
 	is_otg_charger = false;
-	config_otg_large_current(false);
+	
 
 #ifdef CONFIG_MTK_XHCI
 	if (disable_irq_count >= 1) {
@@ -1686,7 +1686,7 @@ static void otg_disable_work_func(struct work_struct *w)
 	}
 	host_mode_enabled = false;
 	is_otg_charger = false;
-	config_otg_large_current(false);
+	
 #ifdef CONFIG_TCPC_CLASS
 #ifdef CONFIG_VIVO_CHARGING_NEW_ARCH
 	if (!cc_tcpc_dev)
@@ -1906,7 +1906,7 @@ static ssize_t otg_charger_store(struct device *dev, struct device_attribute *at
 		printk("===otg charger disabled ===\n");
 		is_otg_charger = false;
 		host_mode_enable(mtk_musb, false);
-		config_otg_large_current(false);
+		
 		if (mtk_musb->charger_lock.active)
 			__pm_relax(&mtk_musb->charger_lock);
 	} else if (!strncmp(value, "enabled", 6)) {
@@ -1914,7 +1914,7 @@ static ssize_t otg_charger_store(struct device *dev, struct device_attribute *at
 		if (!mtk_musb->charger_lock.active)
 			__pm_stay_awake(&mtk_musb->charger_lock);
 		is_otg_charger = true;
-		config_otg_large_current(true);
+	
 		host_mode_enable(mtk_musb, true);
 	} else {
 		return -EINVAL;

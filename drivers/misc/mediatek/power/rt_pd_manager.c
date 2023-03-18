@@ -56,10 +56,7 @@ static unsigned char vconn_on;
 #endif
 
 #if CONFIG_MTK_GAUGE_VERSION == 30
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-static struct charger_device *primary_charger;
-static struct charger_consumer *chg_consumer;
-#endif
+
 #endif
 
 
@@ -197,19 +194,13 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			pd_sink_current_old = pd_sink_current_new;
 			if (pd_sink_voltage_new && pd_sink_current_new) {
 #if CONFIG_MTK_GAUGE_VERSION == 30
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-				charger_manager_enable_power_path(chg_consumer,
-					MAIN_CHARGER, true);
-#endif
+
 #else
 				mtk_chr_pd_enable_power_path(1);
 #endif
 			} else if (!tcpc_kpoc) {
 #if CONFIG_MTK_GAUGE_VERSION == 30
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-				charger_manager_enable_power_path(chg_consumer,
-					MAIN_CHARGER, false);
-#endif
+
 #else
 				mtk_chr_pd_enable_power_path(0);
 #endif
@@ -241,10 +232,7 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 	case TCP_NOTIFY_EXT_DISCHARGE:
 		pr_info("%s ext discharge = %d\n", __func__, noti->en_state.en);
 #if CONFIG_MTK_GAUGE_VERSION == 30
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-		charger_dev_enable_discharge(primary_charger,
-			noti->en_state.en);
-#endif
+
 #endif
 		break;
 
@@ -256,19 +244,13 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			usb_dpdm_pulldown(false);
 			if (tcpc_kpoc) {
 				pr_info("Water is detected in KPOC, disable HV charging\n");
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-				charger_manager_enable_high_voltage_charging(
-					chg_consumer, false);
-#endif
+
 			}
 		} else {
 			usb_dpdm_pulldown(true);
 			if (tcpc_kpoc) {
 				pr_info("Water is removed in KPOC, enable HV charging\n");
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-				charger_manager_enable_high_voltage_charging(
-					chg_consumer, true);
-#endif
+
 			}
 		}
 		break;
@@ -310,20 +292,8 @@ static int rt_pd_manager_probe(struct platform_device *pdev)
 
 
 	/* Get charger device */
-#if CONFIG_MTK_GAUGE_VERSION == 30
-#ifndef CONFIG_VIVO_CHARGING_NEW_ARCH
-	primary_charger = get_charger_by_name("primary_chg");
-	if (!primary_charger) {
-		pr_err("%s: get primary charger device failed\n", __func__);
-		return -ENODEV;
-	}
-	chg_consumer = charger_manager_get_by_name(&pdev->dev, "charger_port1");
-	if (!chg_consumer) {
-		pr_err("%s: get charger consumer device failed\n", __func__);
-		return -ENODEV;
-	}
-#endif
-#endif /* CONFIG_MTK_GAUGE_VERSION == 30 */
+
+
 
 #if 0 /* vconn is from vsys on mt6759 */
 #if (!defined(CONFIG_MTK_GPIO) || defined(CONFIG_MTK_GPIOLIB_STAND))

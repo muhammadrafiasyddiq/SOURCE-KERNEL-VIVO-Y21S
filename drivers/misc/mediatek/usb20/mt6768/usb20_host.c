@@ -789,7 +789,7 @@ static void do_host_work(struct work_struct *data)
 
 		if (is_otg_charger) {
 			DBG(0, "set config_otg_large_current true\n");
-			config_otg_large_current(true);
+			
 		}
 
 		mt_usb_set_vbus(mtk_musb, 1);
@@ -846,7 +846,7 @@ static void do_host_work(struct work_struct *data)
 
 		if (is_otg_charger) {
 			DBG(0, "set config_otg_large_current false\n");
-			config_otg_large_current(false);
+			
 		}
 
 		mt_usb_set_vbus(mtk_musb, 0);
