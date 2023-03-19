@@ -623,7 +623,7 @@ static void night_mode(kal_bool enable)
 /*No Need to implement this function*/
 }				/*    night_mode    */
 
-void vivo_read_eeprom()
+void vivo_read_eeprom(void)
 {
 	unsigned short i=0x78,value=0,timeout=0;
 	write_cmos_sensor(0xf3, 0x34);
@@ -643,7 +643,7 @@ void vivo_read_eeprom()
 }
 
 
-void vivo_read_eeprom2()
+void vivo_read_eeprom2(void)
 {
 	unsigned short i=0x78,value=0,timeout=0;
 	write_cmos_sensor(0xfe, 0x02);
@@ -664,7 +664,7 @@ void vivo_read_eeprom2()
 }
 
 
-void vivo_read_eeprom3()
+void vivo_read_eeprom3(void)
 {
 	unsigned int i=0x78,j=0;
 	unsigned char value=0,timeout=0;
