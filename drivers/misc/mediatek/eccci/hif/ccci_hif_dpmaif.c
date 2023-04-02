@@ -117,6 +117,8 @@ do { \
 	pr_info("[ccci]" fmt, ##args); \
 } while (0)
 
+#define DPMA_DRB_DATA_INFO(fmt, args...) \
+	ccci_dump_write(0, CCCI_DUMP_DPMA_DRB, 0, fmt, ##args)
 
 static void dpmaif_dump_register(struct hif_dpmaif_ctrl *hif_ctrl, int buf_type)
 {
@@ -290,18 +292,21 @@ static void dpmaif_dump_rxq_remain(struct hif_dpmaif_ctrl *hif_ctrl,
 		/* rxq struct dump */
 		CCCI_MEM_LOG_TAG(md_id, TAG, "dpmaif:dump rxq(%d): 0x%p\n",
 			i, rxq);
+#ifdef DPMAIF_DEBUG_LOG
 		ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP, (void *)rxq,
 			(int)sizeof(struct dpmaif_rx_queue));
+#endif
 		/* PIT mem dump */
 		CCCI_MEM_LOG(md_id, TAG,
 			"dpmaif:pit request base: 0x%p(%d*%d)\n",
 			rxq->pit_base,
 			(int)sizeof(struct dpmaifq_normal_pit),
 			rxq->pit_size_cnt);
-#ifdef DPMAIF_DEBUG_LOG
+
 		CCCI_MEM_LOG(md_id, TAG,
 			"Current rxq%d pit pos: w/r/rel=%x, %x, %x\n", i,
 		       rxq->pit_wr_idx, rxq->pit_rd_idx, rxq->pit_rel_rd_idx);
+#ifdef DPMAIF_DEBUG_LOG
 		ccci_util_mem_dump(-1, CCCI_DUMP_MEM_DUMP, rxq->pit_base,
 			(rxq->pit_size_cnt *
 			sizeof(struct dpmaifq_normal_pit)));
@@ -326,7 +331,7 @@ static void dpmaif_dump_rxq_remain(struct hif_dpmaif_ctrl *hif_ctrl,
 			rxq->bat_req.bat_skb_ptr,
 			(rxq->bat_req.skb_pkt_cnt *
 			sizeof(struct dpmaif_bat_skb_t)));
-#endif
+
 #ifdef HW_FRG_FEATURE_ENABLE
 		/* BAT frg mem dump */
 		CCCI_MEM_LOG(md_id, TAG,
@@ -348,7 +353,7 @@ static void dpmaif_dump_rxq_remain(struct hif_dpmaif_ctrl *hif_ctrl,
 			(rxq->bat_frag.skb_pkt_cnt *
 			sizeof(struct dpmaif_bat_page_t)));
 #endif
-
+#endif
 	}
 }
 
@@ -414,11 +419,86 @@ static void dpmaif_dump_bat_status(struct hif_dpmaif_ctrl *hif_ctrl)
 }
 #endif
 
+static void dump_drb_queue_data(unsigned int qno)
+{
+	struct dpmaif_tx_queue *txq;
+	int i, drb_buf_size, mod64, count;
+	u64 *data_64ptr;
+	u8 *data_8ptr;
+
+	if (!dpmaif_ctrl || qno >= DPMAIF_TXQ_NUM || qno < 0) {
+		CCCI_ERROR_LOG(-1, TAG,
+			"[%s] error: dpmaif_ctrl = %p; qno = %d",
+			__func__, dpmaif_ctrl, qno);
+		return;
+	}
+
+	if (dpmaif_ctrl->dpmaif_state == HIFDPMAIF_STATE_PWROFF
+		|| dpmaif_ctrl->dpmaif_state == HIFDPMAIF_STATE_MIN) {
+		CCCI_ERROR_LOG(-1, TAG,
+			"[%s] DPMAIF not power on, skip dump.", __func__);
+		return;
+	}
+
+	txq = &dpmaif_ctrl->txq[qno];
+
+	DPMA_DRB_DATA_INFO("DPMAIF [%s] for q:%d info: start +++++\n",
+			__func__, qno);
+
+	DPMA_DRB_DATA_INFO("drb_base:%p wr:%u rd:%u rel:%u hw_rw:0x%08X hw_widx01:0x%08X\n",
+		txq->drb_base, txq->drb_wr_idx, txq->drb_rd_idx,
+		txq->drb_rel_rd_idx, drv_dpmaif_ul_get_rwidx(qno),
+		drv_dpmaif_ul_get_hw_widx_01());
+
+	drb_buf_size = txq->drb_size_cnt * sizeof(struct dpmaif_drb_pd);
+
+	data_64ptr = (u64 *)txq->drb_base;
+	mod64 = drb_buf_size % 64;
+	count = drb_buf_size / 64;
+
+	DPMA_DRB_DATA_INFO("[%s] drb_buf_size: %d; mod64: %d; count = %d\n",
+			__func__, drb_buf_size, mod64, count);
+
+	i = 0;
+	while (i < count) {
+		DPMA_DRB_DATA_INFO("%08X(%04d): %016X %016X %016X %016X %016X %016X %016X %016X\n",
+			(long)data_64ptr, (i * 8),
+			*data_64ptr, *(data_64ptr + 1),
+			*(data_64ptr + 2), *(data_64ptr + 3),
+			*(data_64ptr + 4), *(data_64ptr + 5),
+			*(data_64ptr + 6), *(data_64ptr + 7));
+
+		data_64ptr += 8;
+		i++;
+	}
+
+	if (mod64 > 0) {
+		data_8ptr = (u8 *)data_64ptr;
+
+		DPMA_DRB_DATA_INFO("%08X(%04d):", (long)data_8ptr, count * 8);
+
+		for (i = 0; i < mod64; i++) {
+			if ((i % 8) == 0)
+				DPMA_DRB_DATA_INFO(" ");
+
+			DPMA_DRB_DATA_INFO("%02X", *(data_8ptr + i));
+		}
+
+		DPMA_DRB_DATA_INFO("\n");
+	}
+
+	DPMA_DRB_DATA_INFO("DPMAIF [%s] for q:%d info: end --------\n",
+			__func__, qno);
+}
+
 /*actrually, length is dump flag's private argument*/
 static int dpmaif_dump_status(unsigned char hif_id,
 		enum MODEM_DUMP_FLAG flag, int length)
 {
 	struct hif_dpmaif_ctrl *hif_ctrl = dpmaif_ctrl;
+
+	dump_drb_queue_data(0);
+	dump_drb_queue_data(1);
 
 	CCCI_MEM_LOG_TAG(hif_ctrl->md_id, TAG,
 		"%s: q_bitmap = %d\n", __func__, length);
@@ -2394,6 +2474,123 @@ static int dpmaif_tx_release(unsigned char q_num, unsigned short budget)
 	}
 }
 
+
+#ifdef USING_TX_DONE_KERNEL_THREAD
+
+static enum hrtimer_restart tx_done_action(struct hrtimer *timer)
+{
+	struct dpmaif_tx_queue *txq =
+		container_of(timer, struct dpmaif_tx_queue, tx_done_timer);
+
+	atomic_set(&txq->txq_done, 1);
+	wake_up_all(&txq->tx_done_wait);
+
+	return HRTIMER_NORESTART;
+}
+
+
+int dpmaif_tx_done_kernel_thread(void *arg)
+{
+	struct dpmaif_tx_queue *txq = (struct dpmaif_tx_queue *)arg;
+	struct hif_dpmaif_ctrl *hif_ctrl = dpmaif_ctrl;
+	int ret;
+	unsigned int L2TISAR0;
+	struct cpumask tmask;
+
+	cpumask_clear(&tmask);
+	cpumask_set_cpu(0, &tmask);
+	cpumask_set_cpu(2, &tmask);
+	cpumask_set_cpu(3, &tmask);
+
+	sched_setaffinity(0, &tmask);
+
+	while (1) {
+		ret = wait_event_interruptible(txq->tx_done_wait,
+				(atomic_read(&txq->txq_done)
+				|| kthread_should_stop()));
+		if (kthread_should_stop())
+			break;
+		if (ret == -ERESTARTSYS)
+			continue;
+		atomic_set(&txq->txq_done, 0);
+		/* This is used to avoid race condition which may cause KE */
+		if (dpmaif_ctrl->dpmaif_state != HIFDPMAIF_STATE_PWRON) {
+			CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
+				"%s meet hw power down(%d)\n",
+				__func__, txq->index);
+			continue;
+		}
+		if (atomic_read(&txq->tx_resume_done)) {
+			CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
+				"txq%d done/resume: 0x%x, 0x%x, 0x%x\n",
+				txq->index,
+				drv_dpmaif_ul_get_rwidx(0),
+				drv_dpmaif_ul_get_rwidx(1),
+				drv_dpmaif_ul_get_rwidx(3));
+			continue;
+		}
+		if (!txq->que_started) {
+			CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
+				"%s meet queue stop(%d)\n",
+				__func__, txq->index);
+			continue;
+		}
+
+#if DPMAIF_TRAFFIC_MONITOR_INTERVAL
+		hif_ctrl->tx_done_last_start_time[txq->index] = local_clock();
+#endif
+
+		ret = dpmaif_tx_release(txq->index, txq->drb_size_cnt);
+
+		L2TISAR0 = drv_dpmaif_get_ul_isr_event();
+		L2TISAR0 &= (DPMAIF_UL_INT_QDONE_MSK & (1 << (txq->index +
+			UL_INT_DONE_OFFSET)));
+		if (ret == ERROR_STOP) {
+
+		} else if (ret == ONCE_MORE || L2TISAR0) {
+			hrtimer_start(&txq->tx_done_timer,
+					ktime_set(0, 500000), HRTIMER_MODE_REL);
+
+			if (L2TISAR0)
+				DPMA_WRITE_PD_MISC(DPMAIF_PD_AP_UL_L2TISAR0,
+							L2TISAR0);
+		} else {
+			/* clear IP busy register wake up cpu case */
+			drv_dpmaif_clear_ip_busy();
+			/* enable tx done interrupt */
+			drv_dpmaif_unmask_ul_interrupt(txq->index);
+		}
+	}
+
+	return 0;
+}
+
+
+static void wait_tx_done_thread_finish(struct dpmaif_tx_queue *txq)
+{
+	int ret;
+
+	if (txq == NULL) {
+		CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
+			"%s meet NULL pointer\n", __func__);
+		return;
+	}
+
+	hrtimer_cancel(&txq->tx_done_timer);
+	msleep(20); /* Make sure hrtimer finish */
+
+	while (!IS_ERR(txq->tx_done_thread)) {
+		ret = kthread_stop((struct task_struct *)txq->tx_done_thread);
+		if (ret == -EINTR) {
+			CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
+				"%s stop kthread meet EINTR\n", __func__);
+			continue;
+		} else
+			break;
+	}
+
+}
+#else
 /*=== tx done =====*/
 static void dpmaif_tx_done(struct work_struct *work)
 {
@@ -2451,6 +2648,8 @@ static void dpmaif_tx_done(struct work_struct *work)
 		drv_dpmaif_unmask_ul_interrupt(txq->index);
 	}
 }
+#endif
+
 
 static void set_drb_msg(unsigned char q_num, unsigned short cur_idx,
 	unsigned int pkt_len, unsigned short count_l, unsigned char channel_id,
@@ -2587,6 +2786,9 @@ static int dpmaif_tx_send_skb(unsigned char hif_id, int qno,
 	unsigned long flags;
 	unsigned short prio_count = 0;
 	s64 curr_tick;
+#ifdef MT6297
+	int total_size = 0;
+#endif
 
 	/* 1. parameters check*/
 	if (!skb)
@@ -2611,8 +2813,6 @@ static int dpmaif_tx_send_skb(unsigned char hif_id, int qno,
 	}
 	txq = &hif_ctrl->txq[qno];
 
-	ccci_h = *(struct ccci_header *)skb->data;
-	skb_pull(skb, sizeof(struct ccci_header));
 	if (atomic_read(&s_tx_busy_assert_on)) {
 		if (likely(ccci_md_get_cap_by_id(hif_ctrl->md_id)
 				&MODEM_CAP_TXBUSY_STOP))
@@ -2761,6 +2961,9 @@ retry:
 		goto retry;
 	}
 	/* 3 send data. */
+	ccci_h = *(struct ccci_header *)skb->data;
+	skb_pull(skb, sizeof(struct ccci_header));
+
 	/* 3.1 a msg drb first, then payload drb. */
 	set_drb_msg(txq->index, cur_idx, skb->len, prio_count,
 				ccci_h.data[0], skb->protocol);
@@ -2805,6 +3008,7 @@ retry:
 			CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
 				"error dma mapping\n");
 			ret = -1;
+			skb_push(skb, sizeof(struct ccci_header));
 			spin_unlock_irqrestore(&txq->tx_lock, flags);
 			goto __EXIT_FUN;
 		}
@@ -2814,6 +3018,9 @@ retry:
 		record_drb_skb(txq->index, cur_idx, skb, 0, is_frag,
 			is_last_one, phy_addr, data_len);
 		cur_idx = ringbuf_get_next_idx(txq->drb_size_cnt, cur_idx, 1);
+#ifdef MT6297
+		total_size += data_len;
+#endif
 	}
 	/* debug: tx on ccci_channel && HW Q */
 	ccci_channel_update_packet_counter(
@@ -2845,6 +3052,10 @@ retry:
 		tx_force_md_assert("HW_REG_CHK_FAIL");
 		ret = 0;
 	}
+#ifdef MT6297
+	if (ret == 0)
+		mtk_ccci_add_ul_pkt_size(total_size);
+#endif
 
 	spin_unlock_irqrestore(&txq->tx_lock, flags);
 __EXIT_FUN:
@@ -2943,7 +3154,7 @@ static void dpmaif_irq_rx_done(unsigned int rx_done_isr)
 
 static void dpmaif_irq_tx_done(unsigned int tx_done_isr)
 {
-	int i, ret;
+	int i;
 	unsigned int intr_ul_que_done;
 
 	for (i = 0; i < DPMAIF_TXQ_NUM; i++) {
@@ -2960,9 +3171,16 @@ static void dpmaif_irq_tx_done(unsigned int tx_done_isr)
 					drv_dpmaif_ul_get_rwidx(3));
 			}
 			drv_dpmaif_mask_ul_que_interrupt(i);
-			ret = queue_delayed_work(dpmaif_ctrl->txq[i].worker,
+
+#ifdef USING_TX_DONE_KERNEL_THREAD
+			hrtimer_start(&dpmaif_ctrl->txq[i].tx_done_timer,
+					ktime_set(0, 500000), HRTIMER_MODE_REL);
+#else
+			queue_delayed_work(dpmaif_ctrl->txq[i].worker,
 					&dpmaif_ctrl->txq[i].dpmaif_tx_work,
 					msecs_to_jiffies(1000 / HZ));
+#endif
+
 #ifdef DPMAIF_DEBUG_LOG
 			dpmaif_ctrl->traffic_info.tx_done_isr_cnt[i]++;
 #endif
@@ -3486,7 +3704,17 @@ static int dpmaif_txq_init(struct dpmaif_tx_queue *txq)
 		WQ_UNBOUND | WQ_MEM_RECLAIM |
 		(txq->index == 0 ? WQ_HIGHPRI : 0),
 		1, dpmaif_ctrl->md_id + 1, txq->index);
+
+#ifdef USING_TX_DONE_KERNEL_THREAD
+	init_waitqueue_head(&txq->tx_done_wait);
+	atomic_set(&txq->txq_done, 0);
+	hrtimer_init(&txq->tx_done_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	txq->tx_done_timer.function = tx_done_action;
+	txq->tx_done_thread = NULL;
+#else
 	INIT_DELAYED_WORK(&txq->dpmaif_tx_work, dpmaif_tx_done);
+#endif
+
 	spin_lock_init(&txq->tx_lock);
 #if DPMAIF_TRAFFIC_MONITOR_INTERVAL
 	txq->busy_count = 0;
@@ -3727,6 +3955,19 @@ int dpmaif_start(unsigned char hif_id)
 		atomic_set(&s_tx_busy_num[i], 0);
 		txq->que_started = true;
 		dpmaif_tx_hw_init(txq);
+#ifdef USING_TX_DONE_KERNEL_THREAD
+		/* start kernel thread */
+		txq->tx_done_thread =
+			(void *)kthread_run(dpmaif_tx_done_kernel_thread,
+				(void *)txq, "dpmaif_txq%d_done_kt",
+				txq->index);
+		if (IS_ERR(txq->tx_done_thread)) {
+			CCCI_ERROR_LOG(dpmaif_ctrl->md_id, TAG,
+				"%s tx done kthread_run fail %ld\n", __func__,
+				(long)txq->tx_done_thread);
+			return -1;
+		}
+#endif
 	}
 	/* debug */
 #if DPMAIF_TRAFFIC_MONITOR_INTERVAL
@@ -3861,9 +4102,14 @@ static int dpmaif_stop_txq(struct dpmaif_tx_queue *txq)
 	if (txq->drb_base == NULL)
 		return -1;
 	txq->que_started = false;
+
+#ifdef USING_TX_DONE_KERNEL_THREAD
+	wait_tx_done_thread_finish(txq);
+#else
 	/* flush work */
 	cancel_delayed_work(&txq->dpmaif_tx_work);
 	flush_delayed_work(&txq->dpmaif_tx_work);
+#endif
 	atomic_set(&s_tx_busy_num[txq->index], 0);
 	/* reset sw */
 #ifdef DPMAIF_DEBUG_LOG
